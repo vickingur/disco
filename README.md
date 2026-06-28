@@ -32,8 +32,12 @@ disco clean ~/code --older-than 30d         # only stale artifacts
 disco clean ~/code --yes                    # actually move matches to Trash
 ```
 
-In the TUI: `↑↓` move · `→`/`←` drill in/out · `space` mark · `c` cleanable-only view ·
-`d` then `y` reclaim · `q` quit.
+In the TUI: `↑↓` move · `→`/`←` drill in/out · `o` (or `⏎` in the cleanable view)
+**reveal in Finder** · `c` cleanable-only view · `space` mark · `d` then `y` reclaim ·
+`q` quit.
+
+Reveal-in-Finder is the quickest non-destructive way to locate an artifact and act on
+it yourself — `o` opens Finder with the selected folder selected.
 
 **Safety:** disco only ever moves to the OS Trash — there is no permanent-delete
 option. Nothing is removed without a `y` keypress (TUI) or an explicit `--yes` (CLI).

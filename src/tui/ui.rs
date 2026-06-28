@@ -121,8 +121,10 @@ fn footer_widget(app: &App) -> Paragraph<'_> {
         return Paragraph::new(Line::from(status.clone()).style(Style::new().fg(Color::Green)));
     }
     let keys = match app.view {
-        View::Browser => "↑↓ move · → enter · ← up · space mark · d reclaim · c cleanable · q quit",
-        View::Cleanable => "↑↓ move · space mark · d reclaim · c browser · q quit",
+        View::Browser => {
+            "↑↓ move · → in · ← up · o reveal · space mark · d reclaim · c cleanable · q quit"
+        }
+        View::Cleanable => "↑↓ move · ⏎/o reveal · space mark · d reclaim · c browser · q quit",
     };
     Paragraph::new(Line::from(keys).style(Style::new().fg(Color::DarkGray)))
 }

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use crate::clean;
 use crate::format;
+use crate::reveal;
 use crate::scan::Tree;
 
 /// Which list the user is looking at.
@@ -141,6 +142,18 @@ impl App {
         };
         self.cursor = 0;
         self.rebuild_rows();
+    }
+
+    /// Reveal the selected item in the Finder so the user can inspect or remove it
+    /// themselves. Reports the outcome in the status line.
+    pub fn reveal(&mut self) {
+        if let Some(idx) = self.selected() {
+            let path = self.tree.nodes[idx].path.clone();
+            self.status = Some(match reveal::in_finder(&path) {
+                Ok(()) => format!("Revealed {} in Finder", self.tree.nodes[idx].name),
+                Err(e) => format!("Could not reveal in Finder: {e}"),
+            });
+        }
     }
 
     /// Marked targets with any that are nested inside another marked target removed,

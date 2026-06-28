@@ -86,6 +86,11 @@ design, so every reclaim is recoverable.
 - CLI `clean`: a dry run (prints the plan, moves nothing) unless `--yes`.
 - Never follow symlinks during the walk (avoid escaping the scan root / loops).
 
+**Reveal in Finder** (`o`, or `⏎` in the cleanable view): opens Finder with the
+selected item selected (`open -R`) — the primary non-destructive way to locate an
+artifact and act on it yourself. Deletion is kept only while the OS-Trash path is
+confirmed working on the user's machine; otherwise it's deferred in favour of reveal.
+
 ## Rings (each end-to-end + runnable before the next)
 
 1. **scan + `disco scan`** — walk, aggregate, detect, print ranked table. ✅

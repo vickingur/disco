@@ -5,6 +5,7 @@ mod cli;
 mod detect;
 mod format;
 mod report;
+mod reveal;
 mod scan;
 mod tui;
 

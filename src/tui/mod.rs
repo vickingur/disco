@@ -5,6 +5,7 @@ mod app;
 mod ui;
 
 pub use app::App;
+use app::View;
 
 use std::time::Duration;
 
@@ -54,8 +55,14 @@ fn handle_key(app: &mut App, code: KeyCode) {
         KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
         KeyCode::Down | KeyCode::Char('j') => app.move_cursor(1),
         KeyCode::Up | KeyCode::Char('k') => app.move_cursor(-1),
-        KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter => app.enter(),
+        // In the flat cleanable view there's nothing to descend into, so Enter
+        // reveals instead of drilling.
+        KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter if app.view == View::Browser => {
+            app.enter()
+        }
+        KeyCode::Enter => app.reveal(),
         KeyCode::Left | KeyCode::Char('h') => app.leave(),
+        KeyCode::Char('o') | KeyCode::Char('f') => app.reveal(),
         KeyCode::Char(' ') | KeyCode::Char('x') => app.toggle_mark(),
         KeyCode::Char('c') | KeyCode::Tab => app.toggle_view(),
         KeyCode::Char('d') => app.request_reclaim(),
