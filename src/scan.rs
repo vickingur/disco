@@ -9,9 +9,30 @@
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::SystemTime;
 
 use crate::detect;
+
+/// Live counters a long walk increments so a caller can render progress. Shared
+/// across threads via `&Progress`; all reads/writes are `Relaxed` (counters only).
+#[derive(Default)]
+pub struct Progress {
+    pub dirs: AtomicU64,
+    pub files: AtomicU64,
+    pub bytes: AtomicU64,
+}
+
+impl Progress {
+    /// `(dirs, files, bytes)` seen so far.
+    pub fn snapshot(&self) -> (u64, u64, u64) {
+        (
+            self.dirs.load(Ordering::Relaxed),
+            self.files.load(Ordering::Relaxed),
+            self.bytes.load(Ordering::Relaxed),
+        )
+    }
+}
 
 /// One filesystem entry in the arena. Children reference parents/children by index
 /// into [`Tree::nodes`] — no `Rc`, cache-friendly, easy to iterate flat.
@@ -54,17 +75,37 @@ impl Tree {
     }
 }
 
-/// Walk `root` and build the tree. Fails only if the root itself is unreadable;
-/// unreadable entries deeper in the tree are skipped (counted by their own size
-/// where metadata is available, otherwise omitted).
+/// Walk `root` and build the tree with no progress/cancellation — a convenience
+/// wrapper used by the test suite. Production goes through [`scan_with_progress`].
+#[cfg(test)]
 pub fn scan(root: &Path) -> std::io::Result<Tree> {
+    scan_with_progress(root, &Progress::default(), &AtomicBool::new(false))
+}
+
+/// Like [`scan`], but increments `progress` as it walks and stops early when `cancel`
+/// is set. Lets a caller render a live scanning UI and abort a slow walk; on cancel
+/// it returns the partial tree built so far (callers typically discard it).
+pub fn scan_with_progress(
+    root: &Path,
+    progress: &Progress,
+    cancel: &AtomicBool,
+) -> std::io::Result<Tree> {
     let name = root
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| root.to_string_lossy().into_owned());
     let mut nodes = Vec::new();
-    let root_idx = walk(&mut nodes, root.to_path_buf(), name, None, None, true)
-        .ok_or_else(|| std::io::Error::other("scan root is unreadable"))?;
+    let root_idx = walk(
+        &mut nodes,
+        root.to_path_buf(),
+        name,
+        None,
+        None,
+        true,
+        progress,
+        cancel,
+    )
+    .ok_or_else(|| std::io::Error::other("scan root is unreadable or scan was cancelled"))?;
     Ok(Tree {
         nodes,
         root: root_idx,
@@ -75,6 +116,7 @@ pub fn scan(root: &Path) -> std::io::Result<Tree> {
 /// is set when the caller already classified this entry (an artifact dir of a parent
 /// project); `detect_enabled` is false once we're inside a tagged artifact or venv,
 /// so we don't re-detect (and double-count) artifacts nested within artifacts.
+#[allow(clippy::too_many_arguments)]
 fn walk(
     nodes: &mut Vec<Node>,
     path: PathBuf,
@@ -82,12 +124,25 @@ fn walk(
     parent: Option<usize>,
     assigned_kind: Option<&'static str>,
     detect_enabled: bool,
+    progress: &Progress,
+    cancel: &AtomicBool,
 ) -> Option<usize> {
+    if cancel.load(Ordering::Relaxed) {
+        return None;
+    }
+
     // symlink_metadata so symlinks report as themselves and are never traversed.
     let meta = fs::symlink_metadata(&path).ok()?;
     let is_dir = meta.is_dir();
     let mut size = meta.blocks() * 512;
     let mut mtime = meta.modified().ok();
+
+    if is_dir {
+        progress.dirs.fetch_add(1, Ordering::Relaxed);
+    } else {
+        progress.files.fetch_add(1, Ordering::Relaxed);
+    }
+    progress.bytes.fetch_add(size, Ordering::Relaxed);
 
     let idx = nodes.len();
     nodes.push(Node {
@@ -150,6 +205,8 @@ fn walk(
             Some(idx),
             child_kind,
             child_detect,
+            progress,
+            cancel,
         ) {
             nodes[idx].children.push(child_idx);
             size += nodes[child_idx].size;

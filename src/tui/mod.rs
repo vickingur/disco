@@ -7,20 +7,66 @@ mod ui;
 pub use app::App;
 use app::View;
 
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 
-use crate::scan::Tree;
+use crate::scan::{self, Progress, Tree};
 
-/// Launch the browser over `tree`, restoring the terminal on exit (including panics,
-/// via the hook installed by `ratatui::init`).
-pub fn run(tree: Tree) -> Result<()> {
+/// Scan `root` (showing a live, cancellable scanning screen) and then browse it.
+/// Restores the terminal on exit, including panics, via `ratatui::init`'s hook.
+pub fn run(root: PathBuf) -> Result<()> {
     let mut terminal = ratatui::init();
-    let result = event_loop(&mut terminal, App::new(tree));
+    let result = scan_then_browse(&mut terminal, root);
     ratatui::restore();
     result
+}
+
+/// Phase 1: walk the tree on a worker thread while animating progress, abortable with
+/// `q`/`Esc`. Phase 2: hand the finished tree to the browser loop.
+fn scan_then_browse(terminal: &mut ratatui::DefaultTerminal, root: PathBuf) -> Result<()> {
+    let progress = Arc::new(Progress::default());
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (tx, rx) = mpsc::channel();
+    {
+        let root = root.clone();
+        let progress = Arc::clone(&progress);
+        let cancel = Arc::clone(&cancel);
+        thread::spawn(move || {
+            let _ = tx.send(scan::scan_with_progress(&root, &progress, &cancel));
+        });
+    }
+
+    let mut frame = 0usize;
+    let tree: Tree = loop {
+        terminal.draw(|f| ui::scanning(f, &root, &progress, frame))?;
+        match rx.try_recv() {
+            Ok(result) => break result?,
+            Err(mpsc::TryRecvError::Empty) => {}
+            Err(mpsc::TryRecvError::Disconnected) => {
+                anyhow::bail!("scan worker stopped unexpectedly")
+            }
+        }
+        if event::poll(Duration::from_millis(80))?
+            && let Event::Key(key) = event::read()?
+            && key.kind == KeyEventKind::Press
+            && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
+        {
+            // Ask the worker to stop, wait for it to unwind, then exit cleanly.
+            cancel.store(true, Ordering::Relaxed);
+            let _ = rx.recv();
+            return Ok(());
+        }
+        frame += 1;
+    };
+
+    event_loop(terminal, App::new(tree))
 }
 
 fn event_loop(terminal: &mut ratatui::DefaultTerminal, mut app: App) -> Result<()> {

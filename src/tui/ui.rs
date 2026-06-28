@@ -1,6 +1,8 @@
 //! Rendering for the interactive browser. Reads [`App`] state and paints a header,
 //! a size-ranked table, and a key-hint footer. No state mutation here.
 
+use std::path::Path;
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
@@ -9,8 +11,51 @@ use ratatui::widgets::{Block, Cell, Clear, Paragraph, Row, Table, TableState};
 
 use super::app::{App, View};
 use crate::format;
+use crate::scan::Progress;
 
 const BAR_WIDTH: usize = 12;
+
+/// The loading screen shown while the tree is still being walked. `frame` advances
+/// each redraw to animate the spinner and cycle the status line.
+pub fn scanning(f: &mut Frame, root: &Path, progress: &Progress, frame: usize) {
+    const SPINNER: [char; 6] = ['◜', '◠', '◝', '◞', '◡', '◟'];
+    const QUIPS: [&str; 4] = [
+        "spinning up the floor…",
+        "sizing every track…",
+        "counting the heavy hitters…",
+        "hunting build cruft…",
+    ];
+    let (dirs, files, bytes) = progress.snapshot();
+    let glyph = SPINNER[(frame / 2) % SPINNER.len()];
+    let quip = QUIPS[(frame / 14) % QUIPS.len()];
+
+    let lines = vec![
+        Line::from(format!("{glyph}  disco")).bold().centered(),
+        Line::from(""),
+        Line::from(vec![
+            Span::raw("Scanning "),
+            Span::styled(root.display().to_string(), Style::new().fg(Color::Cyan)),
+        ])
+        .centered(),
+        Line::from(format!(
+            "{dirs} dirs · {files} files · {} so far",
+            format::size(bytes)
+        ))
+        .style(Style::new().fg(Color::DarkGray))
+        .centered(),
+        Line::from(""),
+        Line::from(quip)
+            .style(Style::new().fg(Color::Magenta))
+            .centered(),
+        Line::from("q to cancel")
+            .style(Style::new().fg(Color::DarkGray))
+            .centered(),
+    ];
+
+    let area = centered(f.area(), 64, lines.len() as u16);
+    f.render_widget(Clear, area);
+    f.render_widget(Paragraph::new(lines), area);
+}
 
 pub fn render(f: &mut Frame, app: &App) {
     let [header, body, footer] = Layout::vertical([
@@ -214,5 +259,29 @@ mod tests {
         assert!(out.contains("Node"), "kind tag present: {out:?}");
         assert!(out.contains("node_modules"), "artifact path present");
         fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn scanning_screen_shows_live_counts() {
+        use std::sync::atomic::Ordering;
+        let progress = Progress::default();
+        progress.dirs.fetch_add(42, Ordering::Relaxed);
+        progress.files.fetch_add(1280, Ordering::Relaxed);
+        progress.bytes.fetch_add(5_000_000, Ordering::Relaxed);
+
+        let mut terminal = Terminal::new(TestBackend::new(70, 12)).unwrap();
+        terminal
+            .draw(|f| scanning(f, Path::new("/some/dir"), &progress, 3))
+            .unwrap();
+        let out: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(out.contains("Scanning"), "shows scanning: {out:?}");
+        assert!(out.contains("42 dirs"), "shows live dir count: {out:?}");
+        assert!(out.contains("cancel"), "shows cancel hint");
     }
 }

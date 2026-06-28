@@ -41,6 +41,10 @@ In the TUI: `↑↓` move · `→`/`←` drill in/out · `o` (or `⏎` in the cl
 Reveal-in-Finder is the quickest non-destructive way to locate an artifact and act on
 it yourself — `o` opens Finder with the selected folder selected.
 
+On a large tree the scan runs on a background thread with a live progress display —
+the TUI shows an animated scanning screen (`q` cancels), and `disko scan`/`clean`
+print a progress line to the terminal (suppressed when piped). It never blocks blankly.
+
 **Safety:** disco only ever moves to the OS Trash — there is no permanent-delete
 option. Nothing is removed without a `y` keypress (TUI) or an explicit `--yes` (CLI).
 Sizes are real on-disk usage (block-based); symlinks are never followed.

@@ -9,24 +9,27 @@ mod reveal;
 mod scan;
 mod tui;
 
-use std::path::PathBuf;
-use std::time::SystemTime;
+use std::io::{IsTerminal, Write};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use clap::Parser;
 
 use cli::{Cli, Command};
-use scan::Tree;
+use scan::{Progress, Tree};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        None => {
-            let (_, tree) = scan_root(cli.path)?;
-            tui::run(tree)
-        }
+        None => tui::run(resolve_root(cli.path)?),
         Some(Command::Scan { path }) => {
-            let (root, tree) = scan_root(path)?;
+            let root = resolve_root(path)?;
+            let tree = scan_cli(&root)?;
             report::print_table(&tree, &root);
             Ok(())
         }
@@ -39,14 +42,55 @@ fn main() -> Result<()> {
     }
 }
 
-/// Resolve `path` (default: current dir) to an absolute root and scan it.
-fn scan_root(path: Option<PathBuf>) -> Result<(PathBuf, Tree)> {
-    let root = path
-        .unwrap_or_else(|| PathBuf::from("."))
+/// Resolve `path` (default: current dir) to an absolute root, failing loudly if it
+/// doesn't exist. Scanning happens separately so callers can show progress.
+fn resolve_root(path: Option<PathBuf>) -> Result<PathBuf> {
+    path.unwrap_or_else(|| PathBuf::from("."))
         .canonicalize()
-        .with_context(|| "cannot access the requested directory".to_string())?;
-    let tree = scan::scan(&root).with_context(|| format!("failed to scan {}", root.display()))?;
-    Ok((root, tree))
+        .with_context(|| "cannot access the requested directory".to_string())
+}
+
+/// Scan `root` for the non-interactive commands, printing a live progress line to a
+/// TTY stderr (stdout stays clean for piping) while a worker thread does the walk.
+fn scan_cli(root: &Path) -> Result<Tree> {
+    let progress = Arc::new(Progress::default());
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (tx, rx) = mpsc::channel();
+    {
+        let root = root.to_path_buf();
+        let progress = Arc::clone(&progress);
+        let cancel = Arc::clone(&cancel);
+        thread::spawn(move || {
+            let _ = tx.send(scan::scan_with_progress(&root, &progress, &cancel));
+        });
+    }
+
+    let show = std::io::stderr().is_terminal();
+    let tree = loop {
+        match rx.try_recv() {
+            Ok(result) => {
+                if show {
+                    eprint!("\r\x1b[K"); // clear the progress line
+                    let _ = std::io::stderr().flush();
+                }
+                break result.with_context(|| format!("failed to scan {}", root.display()))?;
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+            Err(mpsc::TryRecvError::Disconnected) => {
+                anyhow::bail!("scan worker stopped unexpectedly")
+            }
+        }
+        if show {
+            let (dirs, files, bytes) = progress.snapshot();
+            eprint!(
+                "\r\x1b[KScanning… {dirs} dirs · {files} files · {}",
+                format::size(bytes)
+            );
+            let _ = std::io::stderr().flush();
+        }
+        thread::sleep(Duration::from_millis(90));
+    };
+    Ok(tree)
 }
 
 fn run_clean(
@@ -55,7 +99,8 @@ fn run_clean(
     older_than: Option<String>,
     yes: bool,
 ) -> Result<()> {
-    let (root, tree) = scan_root(path)?;
+    let root = resolve_root(path)?;
+    let tree = scan_cli(&root)?;
     let window = older_than.as_deref().map(clean::parse_window).transpose()?;
     let now = SystemTime::now();
 
