@@ -46,3 +46,14 @@ pub fn age(t: Option<SystemTime>) -> String {
         s => format!("{}d", s / DAY),
     }
 }
+
+/// Render a proportion in `0.0..=1.0` as a fixed-width block bar, e.g. `███░░░░░`.
+pub fn bar(ratio: f64, width: usize) -> String {
+    let ratio = ratio.clamp(0.0, 1.0);
+    let filled = (ratio * width as f64).round() as usize;
+    let filled = filled.min(width);
+    let mut s = String::with_capacity(width * 3);
+    s.extend(std::iter::repeat_n('█', filled));
+    s.extend(std::iter::repeat_n('░', width - filled));
+    s
+}
