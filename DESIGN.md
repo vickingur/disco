@@ -20,10 +20,13 @@ trash backends for v1 (macOS first), remote/network filesystems.
 
 ## Surfaces
 
-- `disco [PATH]` — scan PATH (default: `~`) and launch the TUI browser.
-- `disco scan [PATH] [--kind K,…] [--min SIZE] [--json]` — non-interactive ranked table.
-- `disco clean [PATH] --kind K,… [--older-than 30d] [--dry-run] [--purge] [--yes]`
-  — scripted cleanup. Default is dry-run-safe: prints what it would do unless `--yes`.
+The installed command is `disko` (`disco` collides with Mono's discovery tool); the
+crate/project keeps the name `disco`.
+
+- `disko [PATH]` — scan PATH (default: current dir) and launch the TUI browser.
+- `disko scan [PATH] [--kind K,…] [--json]` — non-interactive ranked table.
+- `disko clean [PATH] [--kind K,…] [--older-than 30d] [--yes]` — scripted reclaim,
+  Trash-only. Dry-run-safe: prints what it would do unless `--yes`.
 
 ## Architecture (layers; lower never imports higher)
 

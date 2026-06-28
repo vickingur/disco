@@ -1,4 +1,4 @@
-//! Command-line surface. Bare `disco [PATH]` opens the interactive browser;
+//! Command-line surface. Bare `disko [PATH]` opens the interactive browser;
 //! subcommands give scriptable access.
 
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
-    name = "disco",
+    name = "disko",
     version,
     about = "Find and reclaim developer build artifacts",
     // The bare-`disco` positional and the subcommands are mutually exclusive.

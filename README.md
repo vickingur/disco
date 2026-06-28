@@ -9,27 +9,29 @@ Detection rules are adapted from [kondo](https://github.com/tbillington/kondo) (
 see [ATTRIBUTION.md](ATTRIBUTION.md). disco adds `pyvenv.cfg`-based virtualenv detection
 and is built as a full-disk analyzer rather than an artifact-only cleaner.
 
+The installed command is **`disko`** (`disco` is taken by Mono's discovery tool).
+
 ## Status
 
 Built in vertical slices (see [DESIGN.md](DESIGN.md)):
 
-- **Ring 1 — scan + report (done):** `disco scan` prints a ranked table of artifacts.
-- **Ring 2 — interactive TUI browser (done):** `disco` opens a navigable size view.
-- **Ring 3 — reclaim (done):** mark + confirm in the TUI; `disco clean` from the CLI.
+- **Ring 1 — scan + report (done):** `disko scan` prints a ranked table of artifacts.
+- **Ring 2 — interactive TUI browser (done):** `disko` opens a navigable size view.
+- **Ring 3 — reclaim (done):** mark + confirm in the TUI; `disko clean` from the CLI.
 - Ring 4 — polish: `--json` output, docs.
 
 ## Usage
 
 ```sh
-disco                 # browse the current directory interactively (TUI)
-disco ~/code          # browse a specific path
-disco scan ~/code     # non-interactive ranked table
+disko                 # browse the current directory interactively (TUI)
+disko ~/code          # browse a specific path
+disko scan ~/code     # non-interactive ranked table
 
 # Reclaim (always moves to the Trash — recoverable; never permanent):
-disco clean ~/code                          # dry run — prints the plan, moves nothing
-disco clean ~/code --kind venv,node_modules # filter by kind
-disco clean ~/code --older-than 30d         # only stale artifacts
-disco clean ~/code --yes                    # actually move matches to Trash
+disko clean ~/code                          # dry run — prints the plan, moves nothing
+disko clean ~/code --kind venv,node_modules # filter by kind
+disko clean ~/code --older-than 30d         # only stale artifacts
+disko clean ~/code --yes                    # actually move matches to Trash
 ```
 
 In the TUI: `↑↓` move · `→`/`←` drill in/out · `o` (or `⏎` in the cleanable view)
