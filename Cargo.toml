@@ -1,0 +1,12 @@
+[package]
+name = "disco"
+version = "0.1.0"
+edition = "2024"
+description = "Disk-space analyzer that finds and reclaims developer build artifacts"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+opt-level = 3
