@@ -14,6 +14,7 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 crossterm = "0.29.0"
 ratatui = "0.30.2"
+rayon = "1.12.0"
 trash = "5.2.6"
 
 [profile.release]
