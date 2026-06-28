@@ -167,9 +167,11 @@ fn footer_widget(app: &App) -> Paragraph<'_> {
     }
     let keys = match app.view {
         View::Browser => {
-            "↑↓ move · → in · ← up · o reveal · space mark · d reclaim · c cleanable · q quit"
+            "↑↓ move · → in · ← up · o reveal · d reclaim (space marks more) · c cleanable · q quit"
         }
-        View::Cleanable => "↑↓ move · ⏎/o reveal · space mark · d reclaim · c browser · q quit",
+        View::Cleanable => {
+            "↑↓ move · ⏎/o reveal · d reclaim (space marks more) · c browser · q quit"
+        }
     };
     Paragraph::new(Line::from(keys).style(Style::new().fg(Color::DarkGray)))
 }
@@ -258,6 +260,20 @@ mod tests {
         let out = rendered(&app);
         assert!(out.contains("Node"), "kind tag present: {out:?}");
         assert!(out.contains("node_modules"), "artifact path present");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn confirm_modal_renders_when_marked() {
+        let root = fixture();
+        let mut app = App::new(crate::scan::scan(&root).unwrap());
+        app.toggle_view(); // cleanable: node_modules is row 0
+        app.toggle_mark();
+        app.request_reclaim();
+        assert!(app.confirming, "marking then d should open the modal");
+        let out = rendered(&app);
+        assert!(out.contains("Reclaim"), "modal title shown: {out:?}");
+        assert!(out.contains("Trash"), "modal mentions Trash");
         fs::remove_dir_all(&root).ok();
     }
 

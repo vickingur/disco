@@ -156,9 +156,14 @@ impl App {
         }
     }
 
-    /// Marked targets with any that are nested inside another marked target removed,
-    /// so deleting them is disjoint (no double-counting, no child outliving a parent).
+    /// What a reclaim would act on: the marked set, or — when nothing is marked — the
+    /// highlighted row, so `d` "just works" on the item in front of you. Any target
+    /// nested inside another is dropped so deletion is disjoint (no double-counting,
+    /// no child outliving a parent).
     fn reclaim_targets(&self) -> Vec<usize> {
+        if self.marked.is_empty() {
+            return self.selected().into_iter().collect();
+        }
         let marked: Vec<(usize, PathBuf)> = self
             .marked
             .iter()
@@ -182,9 +187,12 @@ impl App {
         (targets.len(), size)
     }
 
-    /// Open the confirmation prompt if anything is marked.
+    /// Open the confirmation prompt if there's something to reclaim (a mark, or the
+    /// highlighted row); otherwise say so rather than appearing to do nothing.
     pub fn request_reclaim(&mut self) {
-        if !self.marked.is_empty() {
+        if self.reclaim_targets().is_empty() {
+            self.status = Some("Nothing here to reclaim".to_string());
+        } else {
             self.confirming = true;
         }
     }
@@ -193,9 +201,9 @@ impl App {
         self.confirming = false;
     }
 
-    /// Move every marked target to the Trash (the TUI only ever does the reversible
-    /// disposal; permanent removal is a deliberate CLI `--purge`). Updates the tree
-    /// in place so sizes and listings reflect the reclaimed space immediately.
+    /// Move every reclaim target to the Trash (always reversible — disco has no
+    /// permanent-delete path). Updates the tree in place so sizes and listings
+    /// reflect the reclaimed space immediately.
     pub fn confirm_reclaim(&mut self) {
         self.confirming = false;
         let mut reclaimed = 0u64;
@@ -317,6 +325,37 @@ mod tests {
         app.rebuild_rows();
         assert!(!app.rows.contains(&nm));
         fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn d_with_nothing_marked_targets_the_highlighted_row() {
+        let root = fixture();
+        let mut app = App::new(crate::scan::scan(&root).unwrap());
+        app.toggle_view(); // cleanable: node_modules highlighted, nothing marked
+        assert!(app.marked.is_empty());
+
+        app.request_reclaim();
+        assert!(
+            app.confirming,
+            "d should open the modal for the highlighted row"
+        );
+        let (count, size) = app.reclaim_plan();
+        assert_eq!(count, 1);
+        assert_eq!(size, app.tree.nodes[app.selected().unwrap()].size);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn d_on_empty_listing_reports_nothing() {
+        // An empty directory: no rows, nothing to reclaim → a status note, no modal.
+        let p = std::env::temp_dir().join(format!("disco_empty_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&p);
+        fs::create_dir_all(&p).unwrap();
+        let mut app = App::new(crate::scan::scan(&p).unwrap());
+        app.request_reclaim();
+        assert!(!app.confirming);
+        assert!(app.status.is_some());
+        fs::remove_dir_all(&p).ok();
     }
 
     #[test]
