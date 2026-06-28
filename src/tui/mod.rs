@@ -37,6 +37,19 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal, mut app: App) -> Result<(
 }
 
 fn handle_key(app: &mut App, code: KeyCode) {
+    // Any key dismisses a transient status message.
+    app.status = None;
+
+    // The confirmation prompt is a modal: only yes/no get through.
+    if app.confirming {
+        match code {
+            KeyCode::Char('y') => app.confirm_reclaim(),
+            KeyCode::Char('n') | KeyCode::Esc => app.cancel_reclaim(),
+            _ => {}
+        }
+        return;
+    }
+
     match code {
         KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
         KeyCode::Down | KeyCode::Char('j') => app.move_cursor(1),
@@ -45,6 +58,7 @@ fn handle_key(app: &mut App, code: KeyCode) {
         KeyCode::Left | KeyCode::Char('h') => app.leave(),
         KeyCode::Char(' ') | KeyCode::Char('x') => app.toggle_mark(),
         KeyCode::Char('c') | KeyCode::Tab => app.toggle_view(),
+        KeyCode::Char('d') => app.request_reclaim(),
         KeyCode::Char('g') => app.cursor_to(0),
         KeyCode::Char('G') => app.cursor_to(usize::MAX),
         _ => {}

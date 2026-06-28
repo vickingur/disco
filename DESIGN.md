@@ -75,17 +75,22 @@ for the analyzer view.
 
 ## Safety (destructive actions explicit + reversible — security profile)
 
-- TUI delete and `clean` both **default to Trash** (`trash` crate, macOS).
-- Permanent removal requires `--purge`; never the default.
-- `clean` without `--yes` is a dry run (prints the plan, deletes nothing).
-- TUI delete shows a confirm modal with the count + total reclaimable size.
+disco **only ever moves to the OS Trash** — there is no permanent-delete path by
+design, so every reclaim is recoverable.
+
+- **Trash-only, everywhere.** No `--purge`, no `rm -rf`. (Reconsidering this is a
+  deliberate decision, not a convenience — see `memory/disco-trash-only.md`.)
+- macOS Trash goes through Foundation's `NSFileManager`, not Finder/AppleScript, so
+  it needs no "control Finder" Automation permission.
+- TUI: deletion only via `d` → a confirm modal (shows count + reclaimable size) → `y`.
+- CLI `clean`: a dry run (prints the plan, moves nothing) unless `--yes`.
 - Never follow symlinks during the walk (avoid escaping the scan root / loops).
 
 ## Rings (each end-to-end + runnable before the next)
 
-1. **scan + `disco scan`** — walk, aggregate, detect, print ranked table. ✅ ship first.
-2. **TUI browser** — ncdu-style navigate/drill, size bars, kind tags. Read-only.
-3. **Reclaim** — mark in TUI + confirm delete; `disco clean` CLI; trash/purge/dry-run.
-4. **Polish** — cleanable-only filter view, `--older-than`, `--json`, kinds config, README.
+1. **scan + `disco scan`** — walk, aggregate, detect, print ranked table. ✅
+2. **TUI browser** — ncdu-style navigate/drill, size bars, kind tags. Read-only. ✅
+3. **Reclaim** — mark in TUI + confirm; `disco clean` CLI; Trash-only + dry-run. ✅
+4. **Polish** — `--json` output, final docs. (`--older-than` + cleanable view already in.)
 </content>
 </invoke>

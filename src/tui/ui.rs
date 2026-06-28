@@ -2,10 +2,10 @@
 //! a size-ranked table, and a key-hint footer. No state mutation here.
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Cell, Paragraph, Row, Table, TableState};
+use ratatui::widgets::{Block, Cell, Clear, Paragraph, Row, Table, TableState};
 
 use super::app::{App, View};
 use crate::format;
@@ -23,6 +23,10 @@ pub fn render(f: &mut Frame, app: &App) {
     f.render_widget(header_widget(app), header);
     render_table(f, app, body);
     f.render_widget(footer_widget(app), footer);
+
+    if app.confirming {
+        render_confirm(f, app);
+    }
 }
 
 fn header_widget(app: &App) -> Paragraph<'_> {
@@ -112,11 +116,51 @@ fn render_table(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 }
 
 fn footer_widget(app: &App) -> Paragraph<'_> {
+    // A fresh result message takes the footer; otherwise show the key hints.
+    if let Some(status) = &app.status {
+        return Paragraph::new(Line::from(status.clone()).style(Style::new().fg(Color::Green)));
+    }
     let keys = match app.view {
-        View::Browser => "↑↓ move · → enter · ← up · space mark · c cleanable · q quit",
-        View::Cleanable => "↑↓ move · space mark · c browser · q quit",
+        View::Browser => "↑↓ move · → enter · ← up · space mark · d reclaim · c cleanable · q quit",
+        View::Cleanable => "↑↓ move · space mark · d reclaim · c browser · q quit",
     };
     Paragraph::new(Line::from(keys).style(Style::new().fg(Color::DarkGray)))
+}
+
+/// A centered modal confirming how much will be moved to Trash.
+fn render_confirm(f: &mut Frame, app: &App) {
+    let (count, size) = app.reclaim_plan();
+    let area = centered(f.area(), 54, 5);
+
+    let block = Block::bordered()
+        .title(" Reclaim ")
+        .border_style(Style::new().fg(Color::Red));
+    let body = vec![
+        Line::from(format!(
+            "Move {count} item(s) · {} to Trash?",
+            format::size(size)
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("y", Style::new().fg(Color::Green).bold()),
+            Span::raw(" confirm    "),
+            Span::styled("n", Style::new().fg(Color::Red).bold()),
+            Span::raw(" cancel"),
+        ]),
+    ];
+    f.render_widget(Clear, area);
+    f.render_widget(Paragraph::new(body).block(block).centered(), area);
+}
+
+/// A `w`×`h` rectangle centered within `area`.
+fn centered(area: Rect, w: u16, h: u16) -> Rect {
+    let [x] = Layout::horizontal([Constraint::Length(w)])
+        .flex(Flex::Center)
+        .areas(area);
+    let [r] = Layout::vertical([Constraint::Length(h)])
+        .flex(Flex::Center)
+        .areas(x);
+    r
 }
 
 #[cfg(test)]

@@ -28,4 +28,24 @@ pub enum Command {
         /// Directory to scan (default: current directory).
         path: Option<PathBuf>,
     },
+
+    /// Reclaim artifacts by moving them to the Trash (recoverable). Dry-run unless
+    /// `--yes`. disco never deletes permanently.
+    Clean {
+        /// Directory to scan (default: current directory).
+        path: Option<PathBuf>,
+
+        /// Only artifacts of these kinds (e.g. `Cargo,Node,venv`); matches kind name
+        /// or artifact directory name, case-insensitive. Default: all kinds.
+        #[arg(long, value_delimiter = ',')]
+        kind: Vec<String>,
+
+        /// Only artifacts not modified within this window (e.g. `30d`, `2w`, `6h`).
+        #[arg(long)]
+        older_than: Option<String>,
+
+        /// Actually reclaim. Without this, prints the plan and moves nothing.
+        #[arg(long)]
+        yes: bool,
+    },
 }
