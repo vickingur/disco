@@ -13,6 +13,7 @@ mod tui;
 
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
@@ -22,25 +23,21 @@ use std::time::{Duration, SystemTime};
 use anyhow::{Context, Result};
 use clap::Parser;
 
-use cli::{Cli, Command};
+use clean::Selection;
+use cli::{Cli, Command, Filter};
 use scan::{Progress, Tree};
 
-fn main() -> Result<()> {
+fn main() -> Result<ExitCode> {
     let cli = Cli::parse();
     match cli.command {
-        None => tui::run(resolve_root(cli.path)?),
-        Some(Command::Scan { path }) => {
-            let root = resolve_root(path)?;
-            let tree = scan_cli(&root)?;
-            report::print_table(&tree, &root);
-            Ok(())
-        }
+        None => tui::run(resolve_root(cli.path)?).map(|()| ExitCode::SUCCESS),
+        Some(Command::Scan { path, filter, json }) => run_scan(path, filter, json),
         Some(Command::Clean {
             path,
-            kind,
-            older_than,
+            filter,
             yes,
-        }) => run_clean(path, kind, older_than, yes),
+            json,
+        }) => run_clean(path, filter, yes, json),
     }
 }
 
@@ -95,79 +92,72 @@ fn scan_cli(root: &Path) -> Result<Tree> {
     Ok(tree)
 }
 
-fn run_clean(
-    path: Option<PathBuf>,
-    kind: Vec<String>,
-    older_than: Option<String>,
-    yes: bool,
-) -> Result<()> {
+fn run_scan(path: Option<PathBuf>, filter: Filter, json: bool) -> Result<ExitCode> {
     let root = resolve_root(path)?;
+    let sel = Selection::parse(filter.kind, filter.older_than.as_deref())?;
     let tree = scan_cli(&root)?;
-    let window = older_than.as_deref().map(clean::parse_window).transpose()?;
-    let now = SystemTime::now();
+    let targets = clean::select(&tree, &sel, SystemTime::now());
+    if json {
+        report::print_json(&report::ScanReport::new(&tree, &root, &targets));
+    } else {
+        report::print_scan_table(&tree, &root, &targets);
+    }
+    Ok(ExitCode::SUCCESS)
+}
 
-    let mut targets: Vec<&scan::Node> = tree
-        .artifacts()
-        .map(|(_, n)| n)
-        .filter(|n| clean::kind_matches(&kind, n.kind.unwrap_or(""), &n.name))
-        .filter(|n| match window {
-            None => true,
-            // Require a known mtime older than the window; unknown ages are skipped.
-            Some(w) => n
-                .mtime
-                .and_then(|m| now.duration_since(m).ok())
-                .is_some_and(|age| age >= w),
-        })
-        .collect();
-    targets.sort_by(|a, b| b.size.cmp(&a.size));
+fn run_clean(path: Option<PathBuf>, filter: Filter, yes: bool, json: bool) -> Result<ExitCode> {
+    let root = resolve_root(path)?;
+    let sel = Selection::parse(filter.kind, filter.older_than.as_deref())?;
+    let tree = scan_cli(&root)?;
+    let targets = clean::select(&tree, &sel, SystemTime::now());
+    let mut rep = report::CleanReport::plan(&root, &targets, !yes);
 
-    if targets.is_empty() {
-        println!("Nothing matches in {}.", root.display());
-        return Ok(());
+    if !json {
+        if targets.is_empty() {
+            println!("Nothing matches in {}.", root.display());
+            return Ok(ExitCode::SUCCESS);
+        }
+        report::print_clean_plan(&root, &targets);
+        if !yes {
+            report::print_dry_run_note(rep.reclaimable_bytes, targets.len());
+            return Ok(ExitCode::SUCCESS);
+        }
     }
 
-    let total: u64 = targets.iter().map(|n| n.size).sum();
-
-    println!("{:>10}  {:<13} PATH", "SIZE", "KIND");
-    for n in &targets {
-        let rel = n.path.strip_prefix(&root).unwrap_or(&n.path);
-        println!(
-            "{:>10}  {:<13} {}",
-            format::size(n.size),
-            n.kind.unwrap_or(""),
-            rel.display()
-        );
-    }
-    println!();
-
-    if !yes {
-        println!(
-            "{} across {} artifact(s) would be moved to Trash.\nDry run — re-run with --yes to reclaim.",
-            format::size(total),
-            targets.len()
-        );
-        return Ok(());
-    }
-
-    let mut reclaimed = 0u64;
-    let mut failures = 0usize;
-    for n in &targets {
-        match clean::remove(&n.path) {
-            Ok(()) => reclaimed += n.size,
-            Err(e) => {
-                eprintln!("  ! {e:#}");
-                failures += 1;
+    if yes {
+        for n in &targets {
+            match clean::remove(&n.path) {
+                Ok(()) => {
+                    rep.reclaimed_bytes += n.size;
+                    rep.results.push(report::Outcome {
+                        path: n.path.display().to_string(),
+                        status: "trashed",
+                        error: None,
+                    });
+                }
+                Err(e) => {
+                    rep.failed += 1;
+                    if !json {
+                        eprintln!("  ! {e:#}");
+                    }
+                    rep.results.push(report::Outcome {
+                        path: n.path.display().to_string(),
+                        status: "failed",
+                        error: Some(format!("{e:#}")),
+                    });
+                }
             }
         }
     }
-    println!(
-        "Moved {} to Trash{}.",
-        format::size(reclaimed),
-        if failures > 0 {
-            format!(" · {failures} failed")
-        } else {
-            String::new()
-        }
-    );
-    Ok(())
+
+    if json {
+        report::print_json(&rep);
+    } else {
+        report::print_clean_summary(rep.reclaimed_bytes, rep.failed);
+    }
+    Ok(if rep.failed > 0 {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    })
 }

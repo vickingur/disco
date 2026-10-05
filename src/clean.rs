@@ -2,9 +2,47 @@
 //! permanent-delete path by design, so every reclaim is recoverable.
 
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result, bail};
+
+use crate::scan::{Node, Tree};
+
+/// Which artifacts a command acts on: the parsed `--kind` and `--older-than`
+/// filters. `scan` and `clean` share it so a dry run and the real run agree.
+pub struct Selection {
+    pub kinds: Vec<String>,
+    pub older_than: Option<Duration>,
+}
+
+impl Selection {
+    /// Build from the raw CLI strings, failing on a malformed window.
+    pub fn parse(kinds: Vec<String>, older_than: Option<&str>) -> Result<Self> {
+        Ok(Self {
+            kinds,
+            older_than: older_than.map(parse_window).transpose()?,
+        })
+    }
+}
+
+/// The artifacts in `tree` that pass `sel`, largest first. An `--older-than`
+/// window requires a known mtime at least that old; unknown ages are skipped.
+pub fn select<'a>(tree: &'a Tree, sel: &Selection, now: SystemTime) -> Vec<&'a Node> {
+    let mut out: Vec<&Node> = tree
+        .artifacts()
+        .map(|(_, n)| n)
+        .filter(|n| kind_matches(&sel.kinds, n.kind.unwrap_or(""), &n.name))
+        .filter(|n| match sel.older_than {
+            None => true,
+            Some(w) => n
+                .mtime
+                .and_then(|m| now.duration_since(m).ok())
+                .is_some_and(|age| age >= w),
+        })
+        .collect();
+    out.sort_by(|a, b| b.size.cmp(&a.size));
+    out
+}
 
 /// Move `path` to the OS Trash. Fails loudly with the path in context so callers can
 /// report which item failed and keep going.
