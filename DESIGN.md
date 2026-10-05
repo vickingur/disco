@@ -24,9 +24,15 @@ The installed command is `disko` (`disco` collides with Mono's discovery tool); 
 crate keeps the name `disco`.
 
 - `disko [PATH]`: scan PATH (default: current dir) and open the TUI browser.
-- `disko scan [PATH]`: non-interactive ranked table.
-- `disko clean [PATH] [--kind K,…] [--older-than 30d] [--yes]`: scripted reclaim.
-  A dry run that prints the plan unless `--yes` is given.
+- `disko scan [PATH] [--kind K,…] [--older-than 30d] [--json]`: non-interactive
+  ranked table, or JSON.
+- `disko clean [PATH] [--kind K,…] [--older-than 30d] [--yes] [--json]`: scripted
+  reclaim. A dry run that prints the plan unless `--yes` is given.
+
+Both commands run the same selection (`clean::select`), so the dry run is exactly
+the set the real run acts on. JSON shapes are defined in `report.rs` and are a
+public contract: fields are added, never renamed or removed. Exit codes: 0 success,
+1 failure (including a partial `clean`), 2 usage.
 
 ## Architecture (layers; lower never imports higher)
 
@@ -34,8 +40,8 @@ crate keeps the name `disco`.
 format   byte/age formatting helpers (leaf, pure)
 detect   project kinds + classify(dir) rules (pure)
 scan     parallel walk -> arena Tree<Node>; classifies artifact dirs during walk
-clean    reclaim: move to Trash, plus the --older-than and --kind filters
-report   scan -> ranked table (non-interactive)
+clean    reclaim: move to Trash; Selection + select() for --kind/--older-than
+report   scan/clean -> ranked table or JSON (non-interactive)
 reveal   open the selected path in Finder (macOS)
 tui      ratatui browser over the Tree; consumes scan + clean + format + reveal
 cli      clap command definitions
@@ -104,6 +110,6 @@ act on it yourself.
 
 ## Roadmap
 
-- `disko scan --json` for machine-readable output.
-- `--kind` filtering on `scan`, matching `clean`.
 - A reveal equivalent on Linux (open the parent directory in the file manager).
+- Restore from the Trash by path, so an agent's reclaim is reversible from the
+  same tool.

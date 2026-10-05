@@ -1,0 +1,25 @@
+name: Feature
+description: A new project type, flag, or behaviour
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to do and where disco falls short today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: For a new project type, the marker file and the artifact directories. For a flag, the exact surface.
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This keeps disco Trash-only (no permanent delete path)
+          required: true

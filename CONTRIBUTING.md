@@ -22,6 +22,10 @@ make run ARGS="scan ~/code"
   (`feat:`, `fix:`, `perf:`, `docs:`, `chore:`) and say *why*, not just what.
 - Add or update a test for behaviour you change. Tests that touch the filesystem use
   `testutil::unique_dir` so they stay isolated under parallel execution.
+- The JSON output and exit codes are a public contract pinned by `tests/cli.rs`:
+  add fields freely, never rename or remove one, and update the README example.
+- `make fixture` prints the path of a sample tree with several artifact kinds; use
+  it to try a change on real files before opening a PR.
 - CI runs the same gate on macOS and Linux, plus a build on the minimum supported
   Rust version (`rust-version` in `Cargo.toml`) and `cargo audit`.
 

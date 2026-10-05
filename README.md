@@ -28,6 +28,7 @@ Or from a checkout: `make install` (runs `cargo install --path .`).
 disko                 # browse the current directory interactively (TUI)
 disko ~/code          # browse a specific path
 disko scan ~/code     # non-interactive ranked table of reclaimable artifacts
+disko scan ~/code --kind venv --older-than 30d --json   # filtered, machine-readable
 
 # Reclaim: always to the Trash, recoverable, never permanent
 disko clean ~/code                          # dry run: prints the plan, moves nothing
@@ -73,6 +74,50 @@ The marker-to-artifact table is adapted from [kondo](https://github.com/tbilling
 (MIT); see [ATTRIBUTION.md](ATTRIBUTION.md). disco adds virtualenv detection by
 content and wraps the rules in a full-disk analyzer rather than an artifact-only
 cleaner.
+
+## Scripting and agents
+
+`scan` and `clean` are built to be driven by scripts and coding agents: no TTY
+needed, filters shared between the dry run and the real run, JSON on stdout, exit
+codes you can branch on.
+
+```sh
+disko scan ~/code --json                     # inventory
+disko clean ~/code --older-than 30d --json   # plan (dry run): same filters, same set
+disko clean ~/code --older-than 30d --yes    # act; still only moves to Trash
+```
+
+Exit codes: `0` success, `1` failure (a scan error, or any item `clean --yes` could
+not trash), `2` usage error. Progress goes to stderr, so stdout is only the result.
+
+`scan --json`:
+
+```json
+{
+  "root": "/Users/me/code",
+  "scanned_bytes": 48318382080,
+  "reclaimable_bytes": 9126805504,
+  "artifacts": [
+    {
+      "path": "/Users/me/code/app/node_modules",
+      "relative_path": "app/node_modules",
+      "kind": "Node",
+      "size_bytes": 734003200,
+      "modified_unix": 1725000000
+    }
+  ]
+}
+```
+
+`clean --json` adds `"dry_run"`, `"results"` (one `{"path", "status": "trashed" |
+"failed", "error"}` per item; empty on a dry run), `"reclaimed_bytes"` and
+`"failed"`. Artifacts are sorted largest first. `modified_unix` is null when no
+mtime could be read. Fields are only ever added, never renamed or removed; the
+contract is pinned by `tests/cli.rs`.
+
+A safe loop for an agent: `scan --json` to inventory, `clean … --json` with the
+intended filters to get the exact plan, show the plan to a human, then re-run with
+`--yes`. Reclaimed items can be restored from the Trash.
 
 ## Platform support
 

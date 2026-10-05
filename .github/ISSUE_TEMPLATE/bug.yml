@@ -1,0 +1,25 @@
+name: Bug
+description: Something behaves wrongly
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version and platform
+      placeholder: "disko 0.1.0, macOS 15 / Arch Linux"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Command and tree
+      description: The exact command, and the directory layout it ran against (a `make fixture`-style sketch is ideal).
+      render: sh
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
