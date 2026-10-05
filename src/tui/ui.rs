@@ -215,14 +215,14 @@ fn centered(area: Rect, w: u16, h: u16) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutil::unique_dir;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use std::fs;
     use std::path::PathBuf;
 
     fn fixture() -> PathBuf {
-        let p = std::env::temp_dir().join(format!("disco_ui_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&p);
+        let p = unique_dir("ui");
         fs::create_dir_all(p.join("web/node_modules")).unwrap();
         fs::write(p.join("web/package.json"), "{}").unwrap();
         fs::write(p.join("web/node_modules/x.js"), vec![0u8; 100_000]).unwrap();

@@ -7,6 +7,8 @@ mod format;
 mod report;
 mod reveal;
 mod scan;
+#[cfg(test)]
+mod testutil;
 mod tui;
 
 use std::io::{IsTerminal, Write};

@@ -261,12 +261,12 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutil::unique_dir;
     use std::fs;
     use std::path::PathBuf;
 
     fn fixture() -> PathBuf {
-        let p = std::env::temp_dir().join(format!("disco_app_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&p);
+        let p = unique_dir("app");
         fs::create_dir_all(p.join("a/node_modules")).unwrap();
         fs::write(p.join("a/package.json"), "{}").unwrap();
         fs::write(p.join("a/node_modules/x.js"), vec![0u8; 100_000]).unwrap();
@@ -348,9 +348,7 @@ mod tests {
     #[test]
     fn d_on_empty_listing_reports_nothing() {
         // An empty directory: no rows, nothing to reclaim → a status note, no modal.
-        let p = std::env::temp_dir().join(format!("disco_empty_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&p);
-        fs::create_dir_all(&p).unwrap();
+        let p = unique_dir("empty");
         let mut app = App::new(crate::scan::scan(&p).unwrap());
         app.request_reclaim();
         assert!(!app.confirming);
@@ -362,8 +360,7 @@ mod tests {
     fn reclaim_targets_drops_nested_marks() {
         // Marking both a directory and something inside it must yield one disjoint
         // target (the ancestor), so deletion never double-counts.
-        let p = std::env::temp_dir().join(format!("disco_disjoint_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&p);
+        let p = unique_dir("disjoint");
         fs::create_dir_all(p.join("outer/inner")).unwrap();
         fs::write(p.join("outer/inner/f.bin"), vec![0u8; 10_000]).unwrap();
         let mut app = App::new(crate::scan::scan(&p).unwrap());

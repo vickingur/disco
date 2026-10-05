@@ -238,15 +238,8 @@ fn max_time(a: Option<SystemTime>, b: Option<SystemTime>) -> Option<SystemTime> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutil::unique_dir;
     use std::fs;
-
-    /// A fresh, isolated temp directory for one test (cargo runs tests in parallel).
-    fn unique_dir(tag: &str) -> PathBuf {
-        let p = std::env::temp_dir().join(format!("disco_scan_{}_{tag}", std::process::id()));
-        let _ = fs::remove_dir_all(&p);
-        fs::create_dir_all(&p).unwrap();
-        p
-    }
 
     fn kinds(tree: &Tree) -> Vec<(&'static str, String)> {
         tree.artifacts()
