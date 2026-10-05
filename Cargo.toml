@@ -2,7 +2,13 @@
 name = "disco"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
 description = "Disk-space analyzer that finds and reclaims developer build artifacts"
+license = "MIT"
+repository = "https://github.com/vickingur/disco"
+readme = "README.md"
+keywords = ["disk-usage", "cleanup", "tui", "node_modules", "build-artifacts"]
+categories = ["command-line-utilities", "filesystem"]
 
 # The installed command is `disko` — `disco` collides with Mono's discovery tool.
 [[bin]]

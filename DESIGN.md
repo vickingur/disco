@@ -1,104 +1,109 @@
-# disco — design
+# disco: design
 
-A small disk-space analyzer tailored for cleaning up developer build artifacts.
-Walks a directory tree, ranks everything by real disk usage, flags regenerable
-artifacts (`.venv`, `node_modules`, `target`, caches, …), and lets you review +
-reclaim space — interactively (TUI) or scripted (CLI).
+A disk-space analyzer tailored for reclaiming developer build artifacts. Walks a
+directory tree, ranks everything by real disk usage, flags regenerable artifacts
+(`.venv`, `node_modules`, `target`, caches, …), and lets you review and reclaim
+space, interactively (TUI) or scripted (CLI).
 
 ## Goals
 
 - **Full disk analyzer**: ncdu-style navigable tree, sorted by size, with size bars.
-- **Artifact detection layered on top**: known cleanable kinds tagged inline + a
+- **Artifact detection layered on top**: known cleanable kinds tagged inline, plus a
   filtered "cleanable" view across the whole tree.
-- **Review then reclaim**: nothing is deleted without explicit confirmation.
-- **Reversible deletion**: default = move to macOS Trash; permanent removal only
-  behind an explicit `--purge` flag.
-- Personal dogfood tool: scoped tight, reliable for daily use, no enterprise polish.
+- **Review then reclaim**: nothing moves without explicit confirmation.
+- **Reversible only**: every reclaim goes to the OS Trash. There is no permanent
+  delete path.
+- Scoped tight and reliable for daily use over feature breadth.
 
-Non-goals: graphical treemap/sunburst (not legible in a terminal), Linux/Windows
-trash backends for v1 (macOS first), remote/network filesystems.
+Non-goals: graphical treemap/sunburst (not legible in a terminal), Windows support,
+remote/network filesystems.
 
 ## Surfaces
 
 The installed command is `disko` (`disco` collides with Mono's discovery tool); the
-crate/project keeps the name `disco`.
+crate keeps the name `disco`.
 
-- `disko [PATH]` — scan PATH (default: current dir) and launch the TUI browser.
-- `disko scan [PATH] [--kind K,…] [--json]` — non-interactive ranked table.
-- `disko clean [PATH] [--kind K,…] [--older-than 30d] [--yes]` — scripted reclaim,
-  Trash-only. Dry-run-safe: prints what it would do unless `--yes`.
+- `disko [PATH]`: scan PATH (default: current dir) and open the TUI browser.
+- `disko scan [PATH]`: non-interactive ranked table.
+- `disko clean [PATH] [--kind K,…] [--older-than 30d] [--yes]`: scripted reclaim.
+  A dry run that prints the plan unless `--yes` is given.
 
 ## Architecture (layers; lower never imports higher)
 
 ```
 format   byte/age formatting helpers (leaf, pure)
-detect   ArtifactKind + classify(dir) rules (pure)
+detect   project kinds + classify(dir) rules (pure)
 scan     parallel walk -> arena Tree<Node>; classifies artifact dirs during walk
-model*   Tree/Node live in scan; marking state for the TUI
-clean    deletion: trash (default) | purge, with dry-run; reversible-first
-report   scan -> ranked table / JSON (non-interactive)
-tui      ratatui browser over the Tree; consumes scan + clean + format
-cli      clap command defs
+clean    reclaim: move to Trash, plus the --older-than and --kind filters
+report   scan -> ranked table (non-interactive)
+reveal   open the selected path in Finder (macOS)
+tui      ratatui browser over the Tree; consumes scan + clean + format + reveal
+cli      clap command definitions
 main     wiring / dispatch
 ```
+
+The walk runs across rayon's thread pool; each subtree is built as a local arena and
+spliced into its parent, so no shared mutable tree is needed during the scan. A
+`Progress` counter and a cancel flag let the TUI and CLI show live progress and
+abort.
 
 ## Data model
 
 Arena tree (`Vec<Node>` + indices, no `Rc`): cache-friendly, no ref-counting.
 
 ```
-Node { name, parent, children, is_dir, own_size, total_size, mtime, kind }
+Node { name, path, parent, children, is_dir, size, mtime, kind }
 ```
 
-- `total_size` uses real disk blocks (`st_blocks * 512`), not apparent file length.
-- Artifact directories are classified during the walk; we still sum their size but
-  do **not** classify anything nested inside them (you clean the whole unit).
+- `size` uses real disk blocks (`st_blocks * 512`), not apparent file length.
+- Artifact directories are classified during the walk. Their size is still summed,
+  but nothing nested inside them is classified: you reclaim the whole unit.
 
 ## Detection rules (detect.rs)
 
-Model lifted from kondo (MIT, © 2020 Trent Billington — see ATTRIBUTION.md):
-a directory is a **project root** when it contains a **marker file**; each project
-type then maps to a set of **artifact directories** (relative to the root) that are
-the cleanable units. This is more precise than raw name-matching — a `target/` only
-counts when there's a `Cargo.toml` beside it, not anywhere named `target`.
+Model adapted from kondo (MIT, © 2020 Trent Billington; see ATTRIBUTION.md): a
+directory is a **project root** when it contains a **marker file**; each project type
+then maps to a set of **artifact directories** (relative to the root) that are the
+cleanable units. This is more precise than name matching: a `target/` only counts
+when there is a `Cargo.toml` beside it, not anywhere named `target`.
 
 Examples (full table in `detect.rs`): `Cargo.toml → target`; `package.json →
-node_modules` (or the React-Native set); `pom.xml → target`; `build.gradle →
-build,.gradle`; `*.py → __pycache__,.pytest_cache,.ruff_cache,.mypy_cache,.tox,…`;
-`Package.swift → .build,.swiftpm`; `*.csproj → bin,obj`; plus Unity/Unreal/Godot/
-Pub/Elixir/Zig/Composer/CocoaPods/Terraform/Pixi/Turborepo.
+node_modules`; `pom.xml → target`; `build.gradle → build,.gradle`; `*.py →
+__pycache__,.pytest_cache,.ruff_cache,.mypy_cache,.tox,…`; `Package.swift →
+.build,.swiftpm`; `*.csproj → bin,obj`; plus Unity, Unreal, Godot, Pub, Elixir, Zig,
+Composer, CocoaPods, Terraform, Pixi and Turborepo.
 
-**Our addition (kondo lacks it; you asked for it):** a directory containing
-`pyvenv.cfg` is a Python virtualenv — the directory *itself* is the cleanable unit
-(catches `.venv`/`venv`/`env`/any name, robustly, by content not name).
+**Beyond kondo:** a directory containing `pyvenv.cfg` is a Python virtualenv and is
+itself the cleanable unit. This catches `.venv`, `venv`, `env` or any other name,
+by content rather than by name.
 
-Once a project root is detected, we don't re-detect artifacts nested inside its
-artifact dirs (no `target` flagged inside `node_modules`). Sizes are still summed
-for the analyzer view.
+Once a project root is detected, artifacts nested inside its artifact directories
+are not re-detected (no `target` flagged inside `node_modules`). Sizes are still
+summed for the analyzer view.
 
-## Safety (destructive actions explicit + reversible — security profile)
+## Safety
 
-disco **only ever moves to the OS Trash** — there is no permanent-delete path by
-design, so every reclaim is recoverable.
+disco **only ever moves to the OS Trash**, so every reclaim is recoverable. This is
+a deliberate design decision, not a missing feature: a tool that bulk-removes
+directories should not have a mode where a typo is unrecoverable.
 
-- **Trash-only, everywhere.** No `--purge`, no `rm -rf`. (Reconsidering this is a
-  deliberate decision, not a convenience — see `memory/disco-trash-only.md`.)
-- macOS Trash goes through Foundation's `NSFileManager`, not Finder/AppleScript, so
-  it needs no "control Finder" Automation permission.
-- TUI: deletion only via `d` → a confirm modal (shows count + reclaimable size) → `y`.
-- CLI `clean`: a dry run (prints the plan, moves nothing) unless `--yes`.
-- Never follow symlinks during the walk (avoid escaping the scan root / loops).
+- **Trash-only, everywhere.** No `--purge`, no `rm -rf`. Pull requests that add a
+  permanent-delete path are out of scope.
+- On macOS, Trash goes through Foundation's `NSFileManager` rather than Finder over
+  AppleScript, so it needs no "control Finder" Automation permission. On Linux the
+  `trash` crate's freedesktop backend is used.
+- TUI: reclaim only via `d`, then a confirm modal showing count and reclaimable size,
+  then `y`.
+- CLI `clean`: a dry run that prints the plan and moves nothing unless `--yes`.
+- Symlinks are never followed during the walk, so a scan cannot escape its root or
+  loop.
 
-**Reveal in Finder** (`o`, or `⏎` in the cleanable view): opens Finder with the
-selected item selected (`open -R`) — the primary non-destructive way to locate an
-artifact and act on it yourself. Deletion is kept only while the OS-Trash path is
-confirmed working on the user's machine; otherwise it's deferred in favour of reveal.
+**Reveal in Finder** (`o`, or `⏎` in the cleanable view) opens Finder with the
+selected item selected (`open -R`): the non-destructive way to locate an artifact and
+act on it yourself.
 
-## Rings (each end-to-end + runnable before the next)
+## Roadmap
 
-1. **scan + `disco scan`** — walk, aggregate, detect, print ranked table. ✅
-2. **TUI browser** — ncdu-style navigate/drill, size bars, kind tags. Read-only. ✅
-3. **Reclaim** — mark in TUI + confirm; `disco clean` CLI; Trash-only + dry-run. ✅
-4. **Polish** — `--json` output, final docs. (`--older-than` + cleanable view already in.)
-</content>
-</invoke>
+- `disko scan --json` for machine-readable output.
+- `--kind` filtering on `scan`, matching `clean`.
+- A reveal equivalent on Linux (open the parent directory in the file manager).
