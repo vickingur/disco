@@ -40,7 +40,7 @@ pub fn select<'a>(tree: &'a Tree, sel: &Selection, now: SystemTime) -> Vec<&'a N
                 .is_some_and(|age| age >= w),
         })
         .collect();
-    out.sort_by(|a, b| b.size.cmp(&a.size));
+    out.sort_by_key(|n| std::cmp::Reverse(n.size));
     out
 }
 
